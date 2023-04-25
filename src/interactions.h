@@ -66,7 +66,7 @@ void specularBSDF(
     // 防止无线递归，需要偏移一定量
     pathSegment.ray.origin = intersect + 0.001f * normal;
     // m.specular.color是镜面颜色
-    pathSegment.color *= m.specular.color / m.hasReflective;
+    pathSegment.color *= m.specular.color;
 }
 __host__ __device__
 float schlick(float cos, float reflectIndex) {
@@ -106,7 +106,7 @@ void schlickBSDF(
 
     pathSegment.ray.direction = reflectProb < sampleFloat ? glm::reflect(origin_direction, normal) : direction;
     pathSegment.ray.origin = intersect + EPSILON * pathSegment.ray.direction;
-    pathSegment.color *= m.specular.color / m.hasReflective;
+    pathSegment.color *= m.specular.color;
 }
 
 /**

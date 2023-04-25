@@ -4,6 +4,7 @@
 #include <thrust/execution_policy.h>
 #include <thrust/random.h>
 #include <thrust/remove.h>
+#include <thrust/partition.h>
 #include <device_launch_parameters.h>
 
 #include "sceneStructs.h"
@@ -16,6 +17,7 @@
 #include "interactions.h"
 
 #define ERRORCHECK 1
+#define STREAM_COMPACTION 1
 
 #define FILENAME (strrchr(__FILE__, '/') ? strrchr(__FILE__, '/') + 1 : __FILE__)
 #define checkCUDAError(msg) checkCUDAErrorFn(msg, FILENAME, __LINE__)
@@ -288,6 +290,13 @@ __global__ void finalGather(int nPaths, glm::vec3* image, PathSegment* iteration
 	}
 }
 
+// Stream Compaction bool Judge
+struct isPathContinue {
+	__host__ __device__ bool operator()(const PathSegment& p) {
+		return (p.remainingBounces > 0);
+	}
+};
+
 /**
  * Wrapper for the __global__ call that sets up the kernel calls and does a ton
  * of memory management
@@ -383,7 +392,14 @@ void pathtrace(uchar4* pbo, int frame, int iter) {
 			dev_paths,
 			dev_materials
 			);
-		iterationComplete = depth >= traceDepth; // TODO: should be based off stream compaction results.
+
+#ifdef STREAM_COMPACTION
+		PathSegment* mid = thrust::partition(thrust::device, dev_paths, dev_paths + num_paths, isPathContinue());
+		num_paths = mid - dev_paths;
+		depth = (num_paths < 1) ? traceDepth + 1 : depth;
+#endif
+
+		iterationComplete = depth >= traceDepth || num_paths == 0; // TODO: should be based off stream compaction results.
 
 		if (guiData != NULL)
 		{
