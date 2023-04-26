@@ -2,6 +2,9 @@
 
 #include "intersections.h"
 
+#define INV_PI 1.f/glm::pi<float>();
+#define P_RR 0.4
+
 // CHECKITOUT
 /**
  * Computes a cosine-weighted random direction in a hemisphere.
@@ -144,24 +147,14 @@ void scatterRay(
     // TODO: implement this.
     // A basic implementation of pure-diffuse shading will just call the
     // calculateRandomDirectionInHemisphere defined above.
-
-    // 决定光线是否被散射，使用0-1分布随机决定
-    glm::vec3 originDirection = pathSegment.ray.direction;
-    thrust::uniform_real_distribution<float> u01(0, 1);
-    float p = u01(rng);
-    if (m.hasReflective == 1.f) {
-        // 被反射
-        specularBSDF(pathSegment, intersect, normal, m, rng);
-    }
-    else if (m.hasRefractive == 1.f) {
-        // 被折射
-        schlickBSDF(pathSegment, intersect, normal, m, rng, u01);
+    glm::vec3 newDirection;
+    if (m.hasReflective) {
+        newDirection = glm::reflect(pathSegment.ray.direction, normal);
     }
     else {
-        // 被散射，使用Lambertian BSDF
-        lambertianBSDF(pathSegment, intersect, normal, m, rng);
+        newDirection = calculateRandomDirectionInHemisphere(normal, rng);
     }
-    pathSegment.remainingBounces--;
     pathSegment.color *= m.color;
-    pathSegment.color = glm::clamp(pathSegment.color, glm::vec3(0.0f), glm::vec3(1.0f));
+    pathSegment.ray.direction = newDirection;
+    pathSegment.ray.origin = intersect + (newDirection * 0.0001f);
 }
