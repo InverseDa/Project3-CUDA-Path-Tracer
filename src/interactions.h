@@ -55,6 +55,7 @@ void lambertianBSDF(
     pathSegment.ray.direction = calculateRandomDirectionInHemisphere(normal, rng);
     // 防止无线递归，需要偏移一定量
     pathSegment.ray.origin = intersect + EPSILON * normal;
+    pathSegment.color *= m.color;
 }
 
 __host__ __device__
@@ -77,39 +78,38 @@ float schlick(float cos, float reflectIndex) {
     return r0 + (1.f - r0) * powf((1.f - cos), 5.f);
 }
 __host__ __device__
-void schlickBSDF(
-    PathSegment& pathSegment,
-    glm::vec3 intersect,
-    glm::vec3 normal,
-    const Material& m,
-    thrust::default_random_engine& rng,
-    thrust::uniform_real_distribution<float> u01) {
-    glm::vec3 origin_direction = pathSegment.ray.direction;
-    // 如果isInside为真，说明光线从物体内部射出
-    bool isInside = glm::dot(origin_direction, normal) > 0.f;
+void schlick_btdf(
+		PathSegment& pathSegment,
+		glm::vec3 intersect,
+		glm::vec3 normal,
+		const Material& m,
+		thrust::default_random_engine& rng) {
+	thrust::uniform_real_distribution<float> u01(0, 1);
+    //Refract
+    glm::vec3 inDirection = pathSegment.ray.direction;
+    //Dot is positive if normal & inDirection face the same dir -> the ray is inside the object getting out
+    bool insideObj = glm::dot(inDirection, normal) > 0.0f;
 
-    // indexOfRefraction 折射率
-    float eta = isInside ? m.indexOfRefraction : (1.f / m.indexOfRefraction);
-    // 如果从里面射出，需要将法向量取反方向（因为法向量默认是朝外射出的）
-    glm::vec3 outwardNormal = isInside ? glm::normalize(-1.0f * normal) : glm::normalize(normal);
-    // 根据Snell's law（n1sin1=n2sin2）计算折射向量
-    // para1：光线原方向 para2：法向量 para3：折射率
-    glm::vec3 direction = glm::refract(glm::normalize(origin_direction), outwardNormal, eta);
+    //glm::refract (followed raytracing.github.io trick for hollow glass sphere effect by reversing normals)
+    float eta = insideObj ? m.indexOfRefraction : (1.0f / m.indexOfRefraction);
+    glm::vec3 outwardNormal = insideObj ? -1.0f * normal : normal;
+    glm::vec3 finalDir = glm::refract(glm::normalize(inDirection), glm::normalize(outwardNormal), eta);
 
-    // 检查是否出现全反射，如果发生，说明光线没有透过材质，而是被材质完全反射回去了
-    if (glm::length(direction) < 0.01f) {
-        pathSegment.color *= 0.f;
-        direction = glm::reflect(origin_direction, normal);
+    //Check for TIR (if magnitude of refracted ray is very small)
+    if (glm::length(finalDir) < 0.01f) {
+        pathSegment.color *= 0.0f;
+        finalDir = glm::reflect(inDirection, normal);
     }
 
-    // 根据菲涅尔定律计算反射光线的概率，然后sampleFloat决定反射还是折射
-    float cos = glm::dot(origin_direction, normal);
-    float reflectProb = schlick(cos, m.indexOfRefraction);
+    //Use schlicks to calculate reflective probability (also followed raytracing.github.io)
+    float cosine = glm::dot(inDirection, normal);
+    float reflectProb = schlick(cosine, m.indexOfRefraction);
     float sampleFloat = u01(rng);
 
-    pathSegment.ray.direction = reflectProb < sampleFloat ? glm::reflect(origin_direction, normal) : direction;
-    pathSegment.ray.origin = intersect + EPSILON * pathSegment.ray.direction;
+    pathSegment.ray.direction = reflectProb < sampleFloat ? glm::reflect(inDirection, normal) : finalDir;
+    pathSegment.ray.origin = intersect + 0.001f * pathSegment.ray.direction;
     pathSegment.color *= m.specular.color;
+
 }
 
 /**
@@ -148,13 +148,13 @@ void scatterRay(
     // A basic implementation of pure-diffuse shading will just call the
     // calculateRandomDirectionInHemisphere defined above.
     glm::vec3 newDirection;
-    if (m.hasReflective) {
-        newDirection = glm::reflect(pathSegment.ray.direction, normal);
+    if (m.hasReflective == 1.f) {
+        specularBSDF(pathSegment, intersect, normal, m, rng);
     }
-    else {
-        newDirection = calculateRandomDirectionInHemisphere(normal, rng);
+    else if(m.hasRefractive == 1.f) {
+        schlick_btdf(pathSegment, intersect, normal, m, rng);
+    }else
+    {
+        lambertianBSDF(pathSegment, intersect, normal, m, rng);
     }
-    pathSegment.color *= m.color;
-    pathSegment.ray.direction = newDirection;
-    pathSegment.ray.origin = intersect + (newDirection * 0.0001f);
 }

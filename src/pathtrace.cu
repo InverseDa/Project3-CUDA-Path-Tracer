@@ -18,6 +18,7 @@
 
 #define ERRORCHECK 1
 #define STREAM_COMPACTION 1
+#define SORT_MATERIAL 1
 
 #define FILENAME (strrchr(__FILE__, '/') ? strrchr(__FILE__, '/') + 1 : __FILE__)
 #define checkCUDAError(msg) checkCUDAErrorFn(msg, FILENAME, __LINE__)
@@ -300,10 +301,12 @@ __global__ void finalGather(int nPaths, glm::vec3* image, PathSegment* iteration
 	}
 }
 
-// Stream Compaction bool Judge
-struct isPathContinue {
-	__host__ __device__ bool operator()(const PathSegment& p) {
-		return (p.remainingBounces > 0);
+// Stream Compaction Bool Judge
+struct isRayAlive
+{
+	__host__ __device__ bool operator()(const PathSegment &path)
+	{
+		return path.remainingBounces > 0;
 	}
 };
 
@@ -367,6 +370,7 @@ void pathtrace(uchar4* pbo, int frame, int iter) {
 	// Shoot ray into scene, bounce between objects, push shading chunks
 
 	bool iterationComplete = false;
+	bool firstTime = false; // for stream compaction
 	while (!iterationComplete) {
 
 		// clean shading chunks
@@ -403,10 +407,12 @@ void pathtrace(uchar4* pbo, int frame, int iter) {
 			dev_materials
 			);
 
-// #ifdef STREAM_COMPACTION
-// 		PathSegment* mid = thrust::partition(thrust::device, dev_paths, dev_paths + num_paths, isPathContinue());
-// 		num_paths = mid - dev_paths;
-// #endif
+#ifdef STREAM_COMPACTION
+		// partition将isRayAlive的值为真的元素放到数组前面，不满足的放到后面。
+		// 最后返回第一个不满足的元素指针，相减就是剩下还有迭代次数的光线数量了
+		num_paths = thrust::partition(thrust::device,
+		                              dev_paths, dev_paths + num_paths, isRayAlive()) - dev_paths;
+#endif
 
 		if (guiData != NULL)
 		{
@@ -415,6 +421,12 @@ void pathtrace(uchar4* pbo, int frame, int iter) {
 
 		iterationComplete = depth == traceDepth || num_paths == 0; // TODO: should be based off stream compaction results.
 	}
+
+#ifdef STREAM_COMPACTION
+	// 记得恢复光线的数量，不然图像就黑了。
+	// 因为流压缩的存在，最后num_paths会等于0，不恢复的话后面的迭代都不会有光线射出来了
+	num_paths = dev_path_end - dev_paths;
+#endif
 
 	// Assemble this iteration and apply it to the image
 	dim3 numBlocksPixels = (pixelcount + blockSize1d - 1) / blockSize1d;
