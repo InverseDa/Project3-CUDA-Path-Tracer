@@ -18,7 +18,7 @@
 
 #define ERRORCHECK 1
 #define STREAM_COMPACTION 1
-#define SORT_MATERIAL 1
+#define SORT_MATERIAL_ID 1
 
 #define FILENAME (strrchr(__FILE__, '/') ? strrchr(__FILE__, '/') + 1 : __FILE__)
 #define checkCUDAError(msg) checkCUDAErrorFn(msg, FILENAME, __LINE__)
@@ -310,6 +310,16 @@ struct isRayAlive
 	}
 };
 
+// Sort
+struct materialsCmp
+{
+	__host__ __device__ bool operator()(const ShadeableIntersection& m1,
+	                                    const ShadeableIntersection& m2)
+	{
+		return m1.materialId < m2.materialId;
+	}
+};
+
 /**
  * Wrapper for the __global__ call that sets up the kernel calls and does a ton
  * of memory management
@@ -370,7 +380,6 @@ void pathtrace(uchar4* pbo, int frame, int iter) {
 	// Shoot ray into scene, bounce between objects, push shading chunks
 
 	bool iterationComplete = false;
-	bool firstTime = false; // for stream compaction
 	while (!iterationComplete) {
 
 		// clean shading chunks
@@ -398,6 +407,11 @@ void pathtrace(uchar4* pbo, int frame, int iter) {
 	  // materials you have in the scenefile.
 	  // TODO: compare between directly shading the path segments and shading
 	  // path segments that have been reshuffled to be contiguous in memory.
+
+		// 按照材质id排序，实测中，简单场景甚至负优化，但复杂的场景这样做的效果还可以
+#ifndef SORT_MATERIAL_ID
+		thrust::sort_by_key(thrust::device, dev_intersections, dev_intersections + num_paths, dev_paths, materialsCmp());
+#endif
 
 		shadeFakeMaterial << <numblocksPathSegmentTracing, blockSize1d >> > (
 			iter,
