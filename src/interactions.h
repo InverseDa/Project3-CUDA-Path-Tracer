@@ -2,8 +2,9 @@
 
 #include "intersections.h"
 
-#define INV_PI 1.f/glm::pi<float>();
-#define P_RR 0.4
+#define P_RR 0.4f
+#define kd 0.5f
+#define ks 0.5f
 
 // CHECKITOUT
 /**
@@ -72,13 +73,15 @@ void specularBSDF(
     // m.specular.color «æµ√Ê—’…´
     pathSegment.color *= m.specular.color;
 }
+
 __host__ __device__
 float schlick(float cos, float reflectIndex) {
     float r0 = powf((1.f - reflectIndex) / (1.f + reflectIndex), 2.f);
     return r0 + (1.f - r0) * powf((1.f - cos), 5.f);
 }
+
 __host__ __device__
-void schlick_btdf(
+void schlickBTDF(
 		PathSegment& pathSegment,
 		glm::vec3 intersect,
 		glm::vec3 normal,
@@ -152,7 +155,7 @@ void scatterRay(
         specularBSDF(pathSegment, intersect, normal, m, rng);
     }
     else if(m.hasRefractive == 1.f) {
-        schlick_btdf(pathSegment, intersect, normal, m, rng);
+        schlickBTDF(pathSegment, intersect, normal, m, rng);
     }else
     {
         lambertianBSDF(pathSegment, intersect, normal, m, rng);

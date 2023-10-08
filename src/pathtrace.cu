@@ -329,9 +329,9 @@ __global__ void shadeFakeMaterial(
 		}
 		if (intersection.t > 0.0f) { // if the intersection exists...
 			segment.remainingBounces--;
-		  // Set up the RNG
-		  // LOOK: this is how you use thrust's RNG! Please look at
-		  // makeSeededRandomEngine as well.
+			// Set up the RNG
+			// LOOK: this is how you use thrust's RNG! Please look at
+			// makeSeededRandomEngine as well.
 			//需要根据迭代深度计算rng
 			thrust::default_random_engine rng = makeSeededRandomEngine(iter, idx, segment.remainingBounces);
 			thrust::uniform_real_distribution<float> u01(0, 1);
@@ -496,11 +496,11 @@ void pathtrace(uchar4* pbo, int frame, int iter) {
 		// TODO:
 		// --- Shading Stage ---
 		// Shade path segments based on intersections and generate new rays by
-	  // evaluating the BSDF.
-	  // Start off with just a big kernel that handles all the different
-	  // materials you have in the scenefile.
-	  // TODO: compare between directly shading the path segments and shading
-	  // path segments that have been reshuffled to be contiguous in memory.
+		// evaluating the BSDF.
+		// Start off with just a big kernel that handles all the different
+		// materials you have in the scenefile.
+		// TODO: compare between directly shading the path segments and shading
+		// path segments that have been reshuffled to be contiguous in memory.
 
 		// 按照材质id排序，实测中，简单场景甚至负优化，但复杂的场景这样做的效果还可以
 #ifndef SORT_MATERIAL_ID
